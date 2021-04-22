@@ -2,8 +2,6 @@ require "identity_robotargeter/engine"
 
 module IdentityRobotargeter
   SYSTEM_NAME = 'robotargeter'
-  PULL_BATCH_AMOUNT = 1000
-  PUSH_BATCH_AMOUNT = 1000
   SYNCING = 'campaign'
   CONTACT_TYPE = 'call'
   ACTIVE_STATUS = 'active'
@@ -33,7 +31,7 @@ module IdentityRobotargeter
       audience.update_attributes!(status: ACTIVE_STATUS)
       campaign_id = JSON.parse(external_system_params)['campaign_id'].to_i
       phone_type = JSON.parse(external_system_params)['phone_type'].to_s
-      members.in_batches(of: get_push_batch_amount).each_with_index do |batch_members, batch_index|
+      members.in_batches(of: Settings.robotargeter.push_batch_amount).each_with_index do |batch_members, batch_index|
         rows = ActiveModel::Serializer::CollectionSerializer.new(
           batch_members,
           serializer: RobotargeterMemberSyncPushSerializer,
@@ -86,14 +84,6 @@ module IdentityRobotargeter
     return false
   end
 
-  def self.get_pull_batch_amount
-    Settings.robotargeter.pull_batch_amount || PULL_BATCH_AMOUNT
-  end
-
-  def self.get_push_batch_amount
-    Settings.robotargeter.push_batch_amount || PUSH_BATCH_AMOUNT
-  end
-
   def self.get_pull_jobs
     defined?(PULL_JOBS) && PULL_JOBS.is_a?(Array) ? PULL_JOBS : []
   end
@@ -141,7 +131,7 @@ module IdentityRobotargeter
       updated_calls.pluck(:id),
       {
         scope: 'robotargeter:calls:last_updated_at',
-        scope_limit: IdentityRobotargeter.get_pull_batch_amount,
+        scope_limit: Settings.robotargeter.pull_batch_amount,
         from: last_updated_at,
         to: updated_calls.empty? ? nil : updated_calls.last.updated_at,
         started_at: started_at,
@@ -224,7 +214,7 @@ module IdentityRobotargeter
       updated_redirects.pluck(:id),
       {
         scope: 'robotargeter:redirects:last_created_at',
-        scope_limit: IdentityRobotargeter.get_pull_batch_amount,
+        scope_limit: Settings.robotargeter.pull_batch_amount,
         from: last_created_at,
         to: updated_redirects.empty? ? nil : updated_redirects.last.created_at,
         started_at: started_at,

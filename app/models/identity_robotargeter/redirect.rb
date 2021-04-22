@@ -9,7 +9,7 @@ module IdentityRobotargeter
       includes(:callee, :campaign)
       .where('redirects.created_at >= ?', last_updated_at)
       .order('redirects.created_at')
-      .limit(IdentityRobotargeter.get_pull_batch_amount)
+      .limit(Settings.robotargeter.pull_batch_amount)
     }
 
     scope :updated_redirects_all, -> (last_updated_at) {

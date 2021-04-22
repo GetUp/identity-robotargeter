@@ -262,20 +262,4 @@ describe IdentityRobotargeter do
       expect(ContactResponseKey.where(key: 'action').count).to eq(2)
     end
   end
-
-  context '#get_pull_batch_amount' do
-    context 'with no settings parameters set' do
-      it 'should return default class constant' do
-        expect(IdentityRobotargeter.get_pull_batch_amount).to eq(1000)
-      end
-    end
-    context 'with settings parameters set' do
-      before(:each) do
-        Settings.stub_chain(:robotargeter, :pull_batch_amount) { 100 }
-      end
-      it 'should return set variable' do
-        expect(IdentityRobotargeter.get_pull_batch_amount).to eq(100)
-      end
-    end
-  end
 end
