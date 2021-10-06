@@ -58,8 +58,8 @@ GEM
     case_transform (0.2)
       activesupport
     coderay (1.1.2)
-    concurrent-ruby (1.0.5)
-    connection_pool (2.2.2)
+    concurrent-ruby (1.1.9)
+    connection_pool (2.2.5)
     crass (1.0.4)
     database_cleaner (1.7.0)
     diff-lcs (1.3)
@@ -107,8 +107,8 @@ GEM
       pry (~> 0.10)
     pry-rails (0.3.6)
       pry (>= 0.10.4)
-    rack (2.0.5)
-    rack-protection (2.0.4)
+    rack (2.2.3)
+    rack-protection (2.1.0)
       rack
     rack-test (1.1.0)
       rack (>= 1.0, < 3)
@@ -137,7 +137,7 @@ GEM
       thor (>= 0.18.1, < 2.0)
     rainbow (3.0.0)
     rake (12.3.1)
-    redis (4.0.2)
+    redis (4.1.4)
     rspec-core (3.8.0)
       rspec-support (~> 3.8.0)
     rspec-expectations (3.8.2)
@@ -164,11 +164,11 @@ GEM
       ruby-progressbar (~> 1.7)
       unicode-display_width (~> 1.4.0)
     ruby-progressbar (1.10.0)
-    sidekiq (5.1.3)
-      concurrent-ruby (~> 1.0)
-      connection_pool (~> 2.2, >= 2.2.0)
+    sidekiq (5.2.9)
+      connection_pool (~> 2.2, >= 2.2.2)
+      rack (~> 2.0)
       rack-protection (>= 1.5.0)
-      redis (>= 3.3.5, < 5)
+      redis (>= 3.3.5, < 4.2)
     sidekiq-batch (0.1.5)
       sidekiq (>= 3)
     sidekiq-limit_fetch (3.4.0)
@@ -217,7 +217,7 @@ DEPENDENCIES
   rspec-mocks
   rspec-rails
   rubocop
-  sidekiq (~> 5.1.1)
+  sidekiq (~> 5.2.9)
   sidekiq-batch
   sidekiq-limit_fetch
   sidekiq-unique-jobs

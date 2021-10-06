@@ -19,7 +19,7 @@ group :development, :test do
   gem 'pry-rails'
   gem 'pry-byebug'
   gem 'spring-commands-rspec'
-  gem 'sidekiq', '~> 5.1.1'
+  gem 'sidekiq', '~> 5.2.9'
   gem 'sidekiq-batch'
   gem 'sidekiq-limit_fetch'
   gem 'sidekiq-unique-jobs'
