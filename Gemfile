@@ -2,8 +2,8 @@ source 'https://rubygems.org'
 
 gemspec
 gem 'rails'
-gem 'pg', '~> 0.18'
-gem 'active_model_serializers', '~> 0.10.7'
+gem 'pg'
+gem 'active_model_serializers'
 
 group :development, :test do
   gem 'phony'
