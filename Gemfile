@@ -1,7 +1,7 @@
 source 'https://rubygems.org'
 
 gemspec
-gem 'rails'
+gem 'rails', '~> 6.1.0'
 gem 'pg'
 gem 'active_model_serializers'
 
@@ -19,8 +19,11 @@ group :development, :test do
   gem 'pry-rails'
   gem 'pry-byebug'
   gem 'spring-commands-rspec'
-  gem 'sidekiq', '~> 5.1.1'
+
+  # Id deps for testing
+  gem 'sidekiq'
   gem 'sidekiq-batch'
   gem 'sidekiq-limit_fetch'
   gem 'sidekiq-unique-jobs'
+  gem 'audited'
 end
