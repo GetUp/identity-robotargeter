@@ -12,7 +12,7 @@ module IdentityRobotargeter
 
     def mobile_number
       phone_scope = instance_options[:phone_type] == 'all' ? 'phone' : instance_options[:phone_type]
-      @object.send(phone_scope)
+      @object.phone_numbers.send(phone_scope).first.phone
     end
 
     def campaign_id
