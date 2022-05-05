@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    identity_robotargeter (0.1.1)
+    identity_robotargeter (2.0.0)
       active_model_serializers
       pg
       rails
