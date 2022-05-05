@@ -20,7 +20,7 @@ module IdentityRobotargeter
       members = Member.where(id: member_ids).with_phone_type(phone_type)
       yield members, campaign_name
     rescue => e
-      audience.update_attributes!(status: FAILED_STATUS) if audience
+      audience.update!(status: FAILED_STATUS) if audience
       raise e
     end
   end
@@ -28,7 +28,7 @@ module IdentityRobotargeter
   def self.push_in_batches(sync_id, members, external_system_params)
     begin
       audience = Audience.find_by_sync_id(sync_id)
-      audience.update_attributes!(status: ACTIVE_STATUS)
+      audience.update!(status: ACTIVE_STATUS)
       campaign_id = JSON.parse(external_system_params)['campaign_id'].to_i
       phone_type = JSON.parse(external_system_params)['phone_type'].to_s
       members.in_batches(of: Settings.robotargeter.push_batch_amount).each_with_index do |batch_members, batch_index|
@@ -43,9 +43,9 @@ module IdentityRobotargeter
 
         yield batch_index, write_result_count
       end
-      audience.update_attributes!(status: FINALISED_STATUS)
+      audience.update!(status: FINALISED_STATUS)
     rescue => e
-      audience.update_attributes!(status: FAILED_STATUS)
+      audience.update!(status: FAILED_STATUS)
       raise e
     end
   end
@@ -163,9 +163,9 @@ module IdentityRobotargeter
     end
 
     contact_campaign = ContactCampaign.find_or_initialize_by(external_id: call.callee.campaign.id, system: SYSTEM_NAME)
-    contact_campaign.update_attributes!(name: call.callee.campaign.name, contact_type: CONTACT_TYPE)
+    contact_campaign.update!(name: call.callee.campaign.name, contact_type: CONTACT_TYPE)
 
-    contact.update_attributes!(contactee: contactee,
+    contact.update!(contactee: contactee,
                               contact_campaign: contact_campaign,
                               duration: call.duration,
                               contact_type: CONTACT_TYPE,
@@ -268,7 +268,7 @@ module IdentityRobotargeter
     campaign = IdentityRobotargeter::Campaign.find(campaign_id)
 
     contact_campaign = ContactCampaign.find_or_initialize_by(external_id: campaign.id, system: SYSTEM_NAME)
-    contact_campaign.update_attributes!(name: campaign.name, contact_type: CONTACT_TYPE)
+    contact_campaign.update!(name: campaign.name, contact_type: CONTACT_TYPE)
 
     campaign.questions.each do |k,v|
       contact_response_key = ContactResponseKey.find_or_initialize_by(key: k, contact_campaign: contact_campaign)
