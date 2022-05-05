@@ -51,8 +51,8 @@ module IdentityRobotargeter
   end
 
   def self.description(sync_type, external_system_params, contact_campaign_name)
-    external_system_params_hash = JSON.parse(external_system_params)
-    if sync_type === 'push'
+    external_system_params_hash = JSON.parse(external_system_params) 
+   if sync_type === 'push'
       "#{SYSTEM_NAME.titleize} - #{SYNCING.titleize}: #{contact_campaign_name} ##{external_system_params_hash['campaign_id']} (#{CONTACT_TYPE})"
     else
       "#{SYSTEM_NAME.titleize}: #{external_system_params_hash['pull_job']}"
@@ -111,7 +111,7 @@ module IdentityRobotargeter
     end
 
     started_at = DateTime.now
-    last_updated_at = Time.parse($redis.with { |r| r.get 'robotargeter:calls:last_updated_at' } || '1970-01-01 00:00:00')
+    last_updated_at = Time.parse(Sidekiq.redis { |r| r.get 'robotargeter:calls:last_updated_at' } || '1970-01-01 00:00:00')
     updated_calls = Call.updated_calls(force ? DateTime.new() : last_updated_at)
     updated_calls_all = Call.updated_calls_all(force ? DateTime.new() : last_updated_at)
 
@@ -122,7 +122,7 @@ module IdentityRobotargeter
     end
 
     unless updated_calls.empty?
-      $redis.with { |r| r.set 'robotargeter:calls:last_updated_at', updated_calls.last.updated_at }
+      Sidekiq.redis { |r| r.set 'robotargeter:calls:last_updated_at', updated_calls.last.updated_at }
     end
 
     execution_time_seconds = ((DateTime.now - started_at) * 24 * 60 * 60).to_i
@@ -196,7 +196,7 @@ module IdentityRobotargeter
     end
 
     started_at = DateTime.now
-    last_created_at = Time.parse($redis.with { |r| r.get 'robotargeter:redirects:last_created_at' } || '1970-01-01 00:00:00')
+    last_created_at = Time.parse(Sidekiq.redis { |r| r.get 'robotargeter:redirects:last_created_at' } || '1970-01-01 00:00:00')
     updated_redirects = Redirect.updated_redirects(last_created_at)
     updated_redirects_all = Redirect.updated_redirects_all(last_created_at)
 
@@ -205,7 +205,7 @@ module IdentityRobotargeter
     end
 
     unless updated_redirects.empty?
-      $redis.with { |r| r.set 'robotargeter:redirects:last_created_at', updated_redirects.last.created_at }
+      Sidekiq.redis { |r| r.set 'robotargeter:redirects:last_created_at', updated_redirects.last.created_at }
     end
 
     execution_time_seconds = ((DateTime.now - started_at) * 24 * 60 * 60).to_i
