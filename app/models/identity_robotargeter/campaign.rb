@@ -1,6 +1,5 @@
 module IdentityRobotargeter
-  class Campaign < ApplicationRecord
-    include ReadOnly
+  class Campaign < ReadOnly
     self.table_name = "campaigns"
     has_many :callees
     has_many :audiences

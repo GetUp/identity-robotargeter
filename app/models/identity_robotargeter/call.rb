@@ -1,6 +1,5 @@
 module IdentityRobotargeter
-  class Call < ApplicationRecord
-    include ReadOnly
+  class Call < ReadOnly
     self.table_name = "calls"
     belongs_to :callee
     has_many :survey_results
