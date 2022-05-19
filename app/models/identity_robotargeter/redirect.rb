@@ -1,6 +1,5 @@
 module IdentityRobotargeter
-  class Redirect < ApplicationRecord
-    include ReadOnly
+  class Redirect < ReadOnly
     self.table_name = "redirects"
     belongs_to :callee
     belongs_to :campaign

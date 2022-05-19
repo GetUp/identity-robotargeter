@@ -1,7 +1,7 @@
 module IdentityRobotargeter
-  module ReadOnly
-    def self.included(mod)
-      mod.establish_connection Settings.robotargeter.read_only_database_url if Settings.robotargeter.read_only_database_url
-    end
+  class ReadOnly < ApplicationRecord
+    self.abstract_class = true
+    db_url_str = set_db_pool_size(Settings.robotargeter.read_only_database_url)
+    establish_connection db_url_str if db_url_str
   end
 end
