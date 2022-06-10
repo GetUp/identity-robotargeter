@@ -97,14 +97,12 @@ module IdentityRobotargeter
       release_mutex_lock(__method__.to_s) if mutex_acquired
     end
     schedule_pull_batch(:fetch_new_calls) if need_another_batch
-    schedule_pull_batch(:fetch_new_redirects)
   end
 
   def self.fetch_new_calls_impl(sync_id, force)
     started_at = DateTime.now
     last_updated_at = get_redis_date('robotargeter:calls:last_updated_at')
     last_id = Sidekiq.redis { |r| r.get 'robotargeter:calls:last_id' } || ''
-    calls_dependent_data_cutoff = DateTime.now
 
     updated_calls = Call.updated_calls(force ? DateTime.new() : last_updated_at, last_id)
     updated_calls_all = Call.updated_calls_all(force ? DateTime.new() : last_updated_at, last_id)
@@ -118,10 +116,7 @@ module IdentityRobotargeter
     unless updated_calls.empty?
       set_redis_date('robotargeter:calls:last_updated_at', updated_calls.last.updated_at)
       Sidekiq.redis { |r| r.set 'robotargeter:calls:last_id', updated_calls.last.id}
-      calls_dependent_data_cutoff = updated_calls.last.updated_at if updated_calls.count < updated_calls_all.count
     end
-
-    set_redis_date('robotargeter:calls:dependent_data_cutoff', calls_dependent_data_cutoff)
 
     execution_time_seconds = ((DateTime.now - started_at) * 24 * 60 * 60).to_i
     yield(
@@ -163,9 +158,8 @@ module IdentityRobotargeter
     started_at = DateTime.now
     last_created_at = get_redis_date('robotargeter:redirects:last_created_at')
     last_id = (Sidekiq.redis { |r| r.get 'robotargeter:redirects:last_id' } || 0).to_i
-    calls_dependent_data_cutoff = get_redis_date('robotargeter:calls:dependent_data_cutoff')
-    updated_redirects = Redirect.updated_redirects(last_created_at, last_id, calls_dependent_data_cutoff)
-    updated_redirects_all = Redirect.updated_redirects_all(last_created_at, last_id, calls_dependent_data_cutoff)
+    updated_redirects = Redirect.updated_redirects(last_created_at, last_id)
+    updated_redirects_all = Redirect.updated_redirects_all(last_created_at, last_id)
 
     updated_redirects.each do |redirect|
       handle_new_redirect(sync_id, redirect.id)
@@ -211,6 +205,7 @@ module IdentityRobotargeter
     end
     schedule_pull_batch(:fetch_active_campaigns) if need_another_batch
     schedule_pull_batch(:fetch_new_calls)
+    schedule_pull_batch(:fetch_new_redirects)
   end
 
   def self.fetch_active_campaigns_impl(sync_id, force)
