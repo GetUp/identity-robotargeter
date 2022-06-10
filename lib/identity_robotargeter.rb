@@ -143,51 +143,6 @@ module IdentityRobotargeter
     updated_calls.count < updated_calls_all.count
   end
 
-  def self.handle_new_call(sync_id, call_id)
-    call = Call.find(call_id)
-    contact = Contact.find_or_initialize_by(external_id: call.id, system: SYSTEM_NAME)
-
-    contactee = UpsertMember.call(
-      {
-        phones: [{ phone: call.callee.phone_number }],
-        firstname: call.callee.first_name,
-        lastname: call.callee.last_name
-      },
-      entry_point: "#{SYSTEM_NAME}:#{__method__.to_s}",
-      ignore_name_change: false
-    )
-
-    unless contactee
-      Notify.warning "Robotargeter: Contactee Insert Failed", "Contactee #{call.inspect} could not be inserted because the contactee could not be created"
-      return
-    end
-
-    contact_campaign = ContactCampaign.find_or_initialize_by(external_id: call.callee.campaign.id, system: SYSTEM_NAME)
-    contact_campaign.update!(name: call.callee.campaign.name, contact_type: CONTACT_TYPE)
-
-    contact.update!(contactee: contactee,
-                              contact_campaign: contact_campaign,
-                              duration: call.duration,
-                              contact_type: CONTACT_TYPE,
-                              happened_at: call.created_at,
-                              status: call.status)
-    contact.reload
-
-    if Settings.robotargeter.subscription_id && call.callee.opted_out_at
-      subscription = Subscription.find(Settings.robotargeter.subscription_id)
-      contactee.unsubscribe_from(subscription, reason: 'robotargeter:disposition', event_time: DateTime.now)
-    end
-
-    if Campaign.connection.tables.include?('survey_results')
-      call.survey_results.each do |sr|
-        contact_response_key = ContactResponseKey.find_or_initialize_by(key: sr.question, contact_campaign: contact_campaign)
-        contact_response_key.save! if contact_response_key.new_record? 
-        contact_response = ContactResponse.find_or_initialize_by(contact: contact, value: sr.answer, contact_response_key: contact_response_key)
-        contact_response.save! if contact_response.new_record? 
-      end
-    end
-  end
-
   def self.fetch_new_redirects(sync_id)
     begin
       mutex_acquired = acquire_mutex_lock(__method__.to_s, sync_id)
@@ -241,21 +196,6 @@ module IdentityRobotargeter
     updated_redirects.count < updated_redirects_all.count
   end
 
-  def self.handle_new_redirect(sync_id, redirect_id)
-    redirect = Redirect.find(redirect_id)
-
-    payload = {
-      cons_hash: { phones: [{ phone: redirect.callee.phone_number }], firstname: redirect.callee.first_name, lastname: redirect.callee.last_name },
-      action_name: redirect.campaign.name,
-      action_type: CONTACT_TYPE,
-      action_technical_type: 'robotargeter_redirect',
-      external_id: redirect.campaign.id,
-      create_dt: redirect.created_at
-    }
-
-    Member.record_action(payload, "#{SYSTEM_NAME}:#{__method__.to_s}")
-  end
-
   def self.fetch_active_campaigns(sync_id, force: false)
     begin
       mutex_acquired = acquire_mutex_lock(__method__.to_s, sync_id)
@@ -292,6 +232,8 @@ module IdentityRobotargeter
     false  # We never need another batch because we always process every campaign.
   end
 
+  private
+
   def self.handle_campaign(sync_id, campaign_id)
     campaign = IdentityRobotargeter::Campaign.find(campaign_id)
 
@@ -304,7 +246,65 @@ module IdentityRobotargeter
     end
   end
 
-  private
+  def self.handle_new_call(sync_id, call_id)
+    call = Call.find(call_id)
+    contact = Contact.find_or_initialize_by(external_id: call.id, system: SYSTEM_NAME)
+
+    contactee = UpsertMember.call(
+      {
+        phones: [{ phone: call.callee.phone_number }],
+        firstname: call.callee.first_name,
+        lastname: call.callee.last_name
+      },
+      entry_point: "#{SYSTEM_NAME}:#{__method__.to_s}",
+      ignore_name_change: false
+    )
+
+    unless contactee
+      Notify.warning "Robotargeter: Contactee Insert Failed", "Contactee #{call.inspect} could not be inserted because the contactee could not be created"
+      return
+    end
+
+    contact_campaign = ContactCampaign.find_or_initialize_by(external_id: call.callee.campaign.id, system: SYSTEM_NAME)
+    contact_campaign.update!(name: call.callee.campaign.name, contact_type: CONTACT_TYPE)
+
+    contact.update!(contactee: contactee,
+                    contact_campaign: contact_campaign,
+                    duration: call.duration,
+                    contact_type: CONTACT_TYPE,
+                    happened_at: call.created_at,
+                    status: call.status)
+    contact.reload
+
+    if Settings.robotargeter.subscription_id && call.callee.opted_out_at
+      subscription = Subscription.find(Settings.robotargeter.subscription_id)
+      contactee.unsubscribe_from(subscription, reason: 'robotargeter:disposition', event_time: DateTime.now)
+    end
+
+    if Campaign.connection.tables.include?('survey_results')
+      call.survey_results.each do |sr|
+        contact_response_key = ContactResponseKey.find_or_initialize_by(key: sr.question, contact_campaign: contact_campaign)
+        contact_response_key.save! if contact_response_key.new_record?
+        contact_response = ContactResponse.find_or_initialize_by(contact: contact, value: sr.answer, contact_response_key: contact_response_key)
+        contact_response.save! if contact_response.new_record?
+      end
+    end
+  end
+
+  def self.handle_new_redirect(sync_id, redirect_id)
+    redirect = Redirect.find(redirect_id)
+
+    payload = {
+      cons_hash: { phones: [{ phone: redirect.callee.phone_number }], firstname: redirect.callee.first_name, lastname: redirect.callee.last_name },
+      action_name: redirect.campaign.name,
+      action_type: CONTACT_TYPE,
+      action_technical_type: 'robotargeter_redirect',
+      external_id: redirect.campaign.id,
+      create_dt: redirect.created_at
+    }
+
+    Member.record_action(payload, "#{SYSTEM_NAME}:#{__method__.to_s}")
+  end
 
   def self.acquire_mutex_lock(method_name, sync_id)
     mutex_name = "#{SYSTEM_NAME}:mutex:#{method_name}"
