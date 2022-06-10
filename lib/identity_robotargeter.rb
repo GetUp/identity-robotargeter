@@ -138,14 +138,14 @@ module IdentityRobotargeter
     updated_calls.count < updated_calls_all.count
   end
 
-  def self.fetch_new_redirects(sync_id)
+  def self.fetch_new_redirects(sync_id, force: false)
     begin
       mutex_acquired = acquire_mutex_lock(__method__.to_s, sync_id)
       unless mutex_acquired
         yield 0, {}, {}, true
         return
       end
-      need_another_batch = fetch_new_redirects_impl(sync_id) do |records_for_import_count, records_for_import, records_for_import_scope, pull_deferred|
+      need_another_batch = fetch_new_redirects_impl(sync_id, force) do |records_for_import_count, records_for_import, records_for_import_scope, pull_deferred|
         yield records_for_import_count, records_for_import, records_for_import_scope, pull_deferred
       end
     ensure
@@ -154,14 +154,16 @@ module IdentityRobotargeter
     schedule_pull_batch(:fetch_new_redirects) if need_another_batch
   end
 
-  def self.fetch_new_redirects_impl(sync_id)
+  def self.fetch_new_redirects_impl(sync_id, force)
     started_at = DateTime.now
     last_created_at = get_redis_date('robotargeter:redirects:last_created_at')
     last_id = (Sidekiq.redis { |r| r.get 'robotargeter:redirects:last_id' } || 0).to_i
     updated_redirects = Redirect.updated_redirects(last_created_at, last_id)
     updated_redirects_all = Redirect.updated_redirects_all(last_created_at, last_id)
 
-    updated_redirects.each do |redirect|
+    iteration_method = force ? :find_each : :each
+
+    updated_redirects.send(iteration_method) do |redirect|
       handle_new_redirect(sync_id, redirect.id)
     end
 
