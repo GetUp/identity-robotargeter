@@ -97,14 +97,12 @@ module IdentityRobotargeter
       release_mutex_lock(__method__.to_s) if mutex_acquired
     end
     schedule_pull_batch(:fetch_new_calls) if need_another_batch
-    schedule_pull_batch(:fetch_new_redirects)
   end
 
   def self.fetch_new_calls_impl(sync_id, force)
     started_at = DateTime.now
     last_updated_at = get_redis_date('robotargeter:calls:last_updated_at')
     last_id = Sidekiq.redis { |r| r.get 'robotargeter:calls:last_id' } || ''
-    calls_dependent_data_cutoff = DateTime.now
 
     updated_calls = Call.updated_calls(force ? DateTime.new() : last_updated_at, last_id)
     updated_calls_all = Call.updated_calls_all(force ? DateTime.new() : last_updated_at, last_id)
@@ -118,10 +116,7 @@ module IdentityRobotargeter
     unless updated_calls.empty?
       set_redis_date('robotargeter:calls:last_updated_at', updated_calls.last.updated_at)
       Sidekiq.redis { |r| r.set 'robotargeter:calls:last_id', updated_calls.last.id}
-      calls_dependent_data_cutoff = updated_calls.last.updated_at if updated_calls.count < updated_calls_all.count
     end
-
-    set_redis_date('robotargeter:calls:dependent_data_cutoff', calls_dependent_data_cutoff)
 
     execution_time_seconds = ((DateTime.now - started_at) * 24 * 60 * 60).to_i
     yield(
@@ -143,59 +138,14 @@ module IdentityRobotargeter
     updated_calls.count < updated_calls_all.count
   end
 
-  def self.handle_new_call(sync_id, call_id)
-    call = Call.find(call_id)
-    contact = Contact.find_or_initialize_by(external_id: call.id, system: SYSTEM_NAME)
-
-    contactee = UpsertMember.call(
-      {
-        phones: [{ phone: call.callee.phone_number }],
-        firstname: call.callee.first_name,
-        lastname: call.callee.last_name
-      },
-      entry_point: "#{SYSTEM_NAME}:#{__method__.to_s}",
-      ignore_name_change: false
-    )
-
-    unless contactee
-      Notify.warning "Robotargeter: Contactee Insert Failed", "Contactee #{call.inspect} could not be inserted because the contactee could not be created"
-      return
-    end
-
-    contact_campaign = ContactCampaign.find_or_initialize_by(external_id: call.callee.campaign.id, system: SYSTEM_NAME)
-    contact_campaign.update!(name: call.callee.campaign.name, contact_type: CONTACT_TYPE)
-
-    contact.update!(contactee: contactee,
-                              contact_campaign: contact_campaign,
-                              duration: call.duration,
-                              contact_type: CONTACT_TYPE,
-                              happened_at: call.created_at,
-                              status: call.status)
-    contact.reload
-
-    if Settings.robotargeter.subscription_id && call.callee.opted_out_at
-      subscription = Subscription.find(Settings.robotargeter.subscription_id)
-      contactee.unsubscribe_from(subscription, reason: 'robotargeter:disposition', event_time: DateTime.now)
-    end
-
-    if Campaign.connection.tables.include?('survey_results')
-      call.survey_results.each do |sr|
-        contact_response_key = ContactResponseKey.find_or_initialize_by(key: sr.question, contact_campaign: contact_campaign)
-        contact_response_key.save! if contact_response_key.new_record? 
-        contact_response = ContactResponse.find_or_initialize_by(contact: contact, value: sr.answer, contact_response_key: contact_response_key)
-        contact_response.save! if contact_response.new_record? 
-      end
-    end
-  end
-
-  def self.fetch_new_redirects(sync_id)
+  def self.fetch_new_redirects(sync_id, force: false)
     begin
       mutex_acquired = acquire_mutex_lock(__method__.to_s, sync_id)
       unless mutex_acquired
         yield 0, {}, {}, true
         return
       end
-      need_another_batch = fetch_new_redirects_impl(sync_id) do |records_for_import_count, records_for_import, records_for_import_scope, pull_deferred|
+      need_another_batch = fetch_new_redirects_impl(sync_id, force) do |records_for_import_count, records_for_import, records_for_import_scope, pull_deferred|
         yield records_for_import_count, records_for_import, records_for_import_scope, pull_deferred
       end
     ensure
@@ -204,15 +154,16 @@ module IdentityRobotargeter
     schedule_pull_batch(:fetch_new_redirects) if need_another_batch
   end
 
-  def self.fetch_new_redirects_impl(sync_id)
+  def self.fetch_new_redirects_impl(sync_id, force)
     started_at = DateTime.now
     last_created_at = get_redis_date('robotargeter:redirects:last_created_at')
     last_id = (Sidekiq.redis { |r| r.get 'robotargeter:redirects:last_id' } || 0).to_i
-    calls_dependent_data_cutoff = get_redis_date('robotargeter:calls:dependent_data_cutoff')
-    updated_redirects = Redirect.updated_redirects(last_created_at, last_id, calls_dependent_data_cutoff)
-    updated_redirects_all = Redirect.updated_redirects_all(last_created_at, last_id, calls_dependent_data_cutoff)
+    updated_redirects = Redirect.updated_redirects(last_created_at, last_id)
+    updated_redirects_all = Redirect.updated_redirects_all(last_created_at, last_id)
 
-    updated_redirects.each do |redirect|
+    iteration_method = force ? :find_each : :each
+
+    updated_redirects.send(iteration_method) do |redirect|
       handle_new_redirect(sync_id, redirect.id)
     end
 
@@ -241,21 +192,6 @@ module IdentityRobotargeter
     updated_redirects.count < updated_redirects_all.count
   end
 
-  def self.handle_new_redirect(sync_id, redirect_id)
-    redirect = Redirect.find(redirect_id)
-
-    payload = {
-      cons_hash: { phones: [{ phone: redirect.callee.phone_number }], firstname: redirect.callee.first_name, lastname: redirect.callee.last_name },
-      action_name: redirect.campaign.name,
-      action_type: CONTACT_TYPE,
-      action_technical_type: 'robotargeter_redirect',
-      external_id: redirect.campaign.id,
-      create_dt: redirect.created_at
-    }
-
-    Member.record_action(payload, "#{SYSTEM_NAME}:#{__method__.to_s}")
-  end
-
   def self.fetch_active_campaigns(sync_id, force: false)
     begin
       mutex_acquired = acquire_mutex_lock(__method__.to_s, sync_id)
@@ -271,6 +207,7 @@ module IdentityRobotargeter
     end
     schedule_pull_batch(:fetch_active_campaigns) if need_another_batch
     schedule_pull_batch(:fetch_new_calls)
+    schedule_pull_batch(:fetch_new_redirects)
   end
 
   def self.fetch_active_campaigns_impl(sync_id, force)
@@ -292,6 +229,8 @@ module IdentityRobotargeter
     false  # We never need another batch because we always process every campaign.
   end
 
+  private
+
   def self.handle_campaign(sync_id, campaign_id)
     campaign = IdentityRobotargeter::Campaign.find(campaign_id)
 
@@ -304,7 +243,65 @@ module IdentityRobotargeter
     end
   end
 
-  private
+  def self.handle_new_call(sync_id, call_id)
+    call = Call.find(call_id)
+    contact = Contact.find_or_initialize_by(external_id: call.id, system: SYSTEM_NAME)
+
+    contactee = UpsertMember.call(
+      {
+        phones: [{ phone: call.callee.phone_number }],
+        firstname: call.callee.first_name,
+        lastname: call.callee.last_name
+      },
+      entry_point: "#{SYSTEM_NAME}:#{__method__.to_s}",
+      ignore_name_change: false
+    )
+
+    unless contactee
+      Notify.warning "Robotargeter: Contactee Insert Failed", "Contactee #{call.inspect} could not be inserted because the contactee could not be created"
+      return
+    end
+
+    contact_campaign = ContactCampaign.find_or_initialize_by(external_id: call.callee.campaign.id, system: SYSTEM_NAME)
+    contact_campaign.update!(name: call.callee.campaign.name, contact_type: CONTACT_TYPE)
+
+    contact.update!(contactee: contactee,
+                    contact_campaign: contact_campaign,
+                    duration: call.duration,
+                    contact_type: CONTACT_TYPE,
+                    happened_at: call.created_at,
+                    status: call.status)
+    contact.reload
+
+    if Settings.robotargeter.subscription_id && call.callee.opted_out_at
+      subscription = Subscription.find(Settings.robotargeter.subscription_id)
+      contactee.unsubscribe_from(subscription, reason: 'robotargeter:disposition', event_time: DateTime.now)
+    end
+
+    if Campaign.connection.tables.include?('survey_results')
+      call.survey_results.each do |sr|
+        contact_response_key = ContactResponseKey.find_or_initialize_by(key: sr.question, contact_campaign: contact_campaign)
+        contact_response_key.save! if contact_response_key.new_record?
+        contact_response = ContactResponse.find_or_initialize_by(contact: contact, value: sr.answer, contact_response_key: contact_response_key)
+        contact_response.save! if contact_response.new_record?
+      end
+    end
+  end
+
+  def self.handle_new_redirect(sync_id, redirect_id)
+    redirect = Redirect.find(redirect_id)
+
+    payload = {
+      cons_hash: { phones: [{ phone: redirect.callee.phone_number }], firstname: redirect.callee.first_name, lastname: redirect.callee.last_name },
+      action_name: redirect.campaign.name,
+      action_type: CONTACT_TYPE,
+      action_technical_type: 'robotargeter_redirect',
+      external_id: redirect.campaign.id,
+      create_dt: redirect.created_at
+    }
+
+    Member.record_action(payload, "#{SYSTEM_NAME}:#{__method__.to_s}")
+  end
 
   def self.acquire_mutex_lock(method_name, sync_id)
     mutex_name = "#{SYSTEM_NAME}:mutex:#{method_name}"
